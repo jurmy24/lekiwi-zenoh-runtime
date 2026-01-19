@@ -1,10 +1,8 @@
 // 50 Hz loop with watchdog and motor control
-// Note: a watchdog is a safety mechanism that triggers a safe action if something goes wrong
-// Eg. without it if teleop crashes and stops sending commands, the runtime will keep running and sending commands to the robot
 
 use std::time::{Duration, Instant};
-use tokio::time::interval; // tokio is an async runtime for Rust
-use tracing::{error, info, warn}; // better logging (emits events into the void, not stdout - and a subscriber (tracing-subscriber) can listen to them)
+use tokio::time::interval; 
+use tracing::{error, info, warn, debug}; // better logging (emits events into the void, not stdout - and a subscriber (tracing-subscriber) can listen to them)
 
 // local imports
 use crate::config::{CMD_TIMEOUT, LOOP_HZ, MOTOR_ENABLED, MOTOR_PORT, TOPIC_CMD_BASE, TOPIC_HEALTH, TOPIC_RT_BASE};
@@ -45,7 +43,7 @@ impl Runtime {
 
     /// Process incoming command
     fn on_command(&mut self, cmd: BaseCommand) {
-        info!("Received command: {:?}", &cmd);
+        debug!("Received command: {:?}", &cmd);
         self.latest_cmd = Some(cmd);
         self.cmd_received_at = Instant::now();
     }
@@ -54,8 +52,7 @@ impl Runtime {
     fn compute_actuation(&mut self) -> BaseActuation {
         let cmd_age = self.cmd_received_at.elapsed();
 
-        if cmd_age > CMD_TIMEOUT {
-            // Watchdog triggered - stop the robot
+        if cmd_age > CMD_TIMEOUT { // trigger watchdog if command is stale
             if self.health != RuntimeHealth::CmdStale {
                 warn!("Command stale ({:?} old), stopping robot", cmd_age);
             }
@@ -97,15 +94,12 @@ impl Runtime {
 pub async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     info!("Opening Zenoh session...");
     let session = zenoh::open(zenoh::Config::default()).await?;
-
-    info!("Setting up publishers and subscribers...");
     let subscriber = session.declare_subscriber(TOPIC_CMD_BASE).await?;
     let pub_actuation = session.declare_publisher(TOPIC_RT_BASE).await?;
     let pub_health = session.declare_publisher(TOPIC_HEALTH).await?;
 
     let mut runtime = Runtime::new();
 
-    // Initialize motors (non-fatal if fails - can still run for testing)
     if let Err(e) = runtime.init_motors() {
         warn!("Failed to initialize motors: {}. Running without motor control.", e);
     }

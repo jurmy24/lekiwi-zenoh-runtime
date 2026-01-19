@@ -61,7 +61,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for (i, &id) in MOTOR_IDS.iter().enumerate() {
         print!("  Motor {} (ID {}): ", MOTOR_NAMES[i], id);
         io::stdout().flush()?;
-        
+
         match bus.ping(id) {
             Ok(true) => println!("✓ RESPONDING"),
             Ok(false) => {
@@ -96,10 +96,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Read registers from each motor
     println!("Step 3: Reading motor registers...");
     println!();
-    
+
     for (i, &id) in MOTOR_IDS.iter().enumerate() {
         println!("  === Motor {} (ID {}) ===", MOTOR_NAMES[i], id);
-        
+
         // Try to read operating mode
         match bus.read_u8(id, Register::OperatingMode) {
             Ok(mode) => {

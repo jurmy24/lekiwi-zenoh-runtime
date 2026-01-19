@@ -1,7 +1,5 @@
 // Omniwheel inverse kinematics for LeKiwi 3-wheel base
-//
 // Converts body-frame velocities (x, y, theta) to individual wheel velocities.
-// Ported from lerobot/src/lerobot/robots/lekiwi/lekiwi.py
 
 use std::f32::consts::PI;
 
@@ -10,7 +8,7 @@ pub const WHEEL_RADIUS: f32 = 0.05; // meters
 pub const BASE_RADIUS: f32 = 0.125; // meters (distance from center to wheel)
 
 /// Wheel mounting angles (degrees) with -90° offset
-/// Left wheel at 240°, Back wheel at 0°, Right wheel at 120°
+/// Left wheel at 240°, Back wheel at 0°, Right wheel at 120° (simple cartesian configuration)
 const WHEEL_ANGLES_DEG: [f32; 3] = [240.0 - 90.0, 0.0 - 90.0, 120.0 - 90.0];
 
 /// Motor resolution: 4096 steps per revolution
@@ -96,8 +94,7 @@ pub fn body_to_wheel_raw_with_params(
     }
 
     // Convert linear speeds (m/s) to angular speeds (rad/s)
-    let wheel_angular_speeds: [f32; 3] =
-        wheel_linear_speeds.map(|linear| linear / wheel_radius);
+    let wheel_angular_speeds: [f32; 3] = wheel_linear_speeds.map(|linear| linear / wheel_radius);
 
     // Convert from rad/s to deg/s
     let mut wheel_degps: [f32; 3] = wheel_angular_speeds.map(|radps| radps * (180.0 / PI));
@@ -124,6 +121,10 @@ pub fn body_to_wheel_raw_with_params(
     }
 }
 
+//
+///
+/// These tests are used to verify the correctness of the kinematics module.
+/// They are run using the `cargo test` command.
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -146,10 +147,16 @@ mod tests {
             "Forward: left={}, back={}, right={}",
             wheels.left, wheels.back, wheels.right
         );
-        
+
         // Left and right should be opposite signs (symmetric motion)
-        assert!(wheels.left != 0, "Left wheel should be non-zero for forward motion");
-        assert!(wheels.right != 0, "Right wheel should be non-zero for forward motion");
+        assert!(
+            wheels.left != 0,
+            "Left wheel should be non-zero for forward motion"
+        );
+        assert!(
+            wheels.right != 0,
+            "Right wheel should be non-zero for forward motion"
+        );
         assert!(
             (wheels.left > 0) != (wheels.right > 0),
             "Left and right wheels should spin opposite directions"
@@ -191,12 +198,24 @@ mod tests {
             "Slow forward (0.02 m/s): left={}, back={}, right={}",
             wheels.left, wheels.back, wheels.right
         );
-        
+
         // At 0.02 m/s, the raw values should be well under 1000 (safety check)
         // MAX_RAW is 3000, so this should be < 10% of max
-        assert!(wheels.left.abs() < 500, "Left wheel raw {} too high for 0.02 m/s", wheels.left);
-        assert!(wheels.back.abs() < 500, "Back wheel raw {} too high for 0.02 m/s", wheels.back);
-        assert!(wheels.right.abs() < 500, "Right wheel raw {} too high for 0.02 m/s", wheels.right);
+        assert!(
+            wheels.left.abs() < 500,
+            "Left wheel raw {} too high for 0.02 m/s",
+            wheels.left
+        );
+        assert!(
+            wheels.back.abs() < 500,
+            "Back wheel raw {} too high for 0.02 m/s",
+            wheels.back
+        );
+        assert!(
+            wheels.right.abs() < 500,
+            "Right wheel raw {} too high for 0.02 m/s",
+            wheels.right
+        );
     }
 
     #[test]
@@ -207,7 +226,7 @@ mod tests {
             "Normal forward (0.1 m/s): left={}, back={}, right={}",
             wheels.left, wheels.back, wheels.right
         );
-        
+
         // At 0.1 m/s, the raw values should be under MAX_RAW (3000)
         assert!(wheels.left.abs() < 3000, "Left wheel exceeds MAX_RAW");
         assert!(wheels.back.abs() < 3000, "Back wheel exceeds MAX_RAW");
@@ -222,7 +241,7 @@ mod tests {
             "Extreme forward (10 m/s): left={}, back={}, right={}",
             wheels.left, wheels.back, wheels.right
         );
-        
+
         // Should be clamped to MAX_RAW (3000)
         assert!(wheels.left.abs() <= 3000, "Left wheel not clamped");
         assert!(wheels.back.abs() <= 3000, "Back wheel not clamped");

@@ -53,7 +53,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!();
 
     if !confirm("Have you run motor_diagnostic first and verified all motors respond?") {
-        println!("Please run: cargo run --example motor_diagnostic -- {}", port);
+        println!(
+            "Please run: cargo run --example motor_diagnostic -- {}",
+            port
+        );
         return Ok(());
     }
 
@@ -74,11 +77,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         match bus.ping(id) {
             Ok(true) => println!("  ✓ Motor {} (ID {}) responding", MOTOR_NAMES[i], id),
             Ok(false) => {
-                println!("  ✗ Motor {} (ID {}) NOT responding - aborting", MOTOR_NAMES[i], id);
+                println!(
+                    "  ✗ Motor {} (ID {}) NOT responding - aborting",
+                    MOTOR_NAMES[i], id
+                );
                 return Ok(());
             }
             Err(e) => {
-                println!("  ✗ Motor {} (ID {}) error: {} - aborting", MOTOR_NAMES[i], id, e);
+                println!(
+                    "  ✗ Motor {} (ID {}) error: {} - aborting",
+                    MOTOR_NAMES[i], id, e
+                );
                 return Ok(());
             }
         }
@@ -136,7 +145,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  Reading back velocities...");
     for (i, &id) in MOTOR_IDS.iter().enumerate() {
         let vel = bus.get_velocity(id)?;
-        println!("    Motor {} velocity: {} (should be ~0)", MOTOR_NAMES[i], vel);
+        println!(
+            "    Motor {} velocity: {} (should be ~0)",
+            MOTOR_NAMES[i], vel
+        );
     }
     println!();
 
@@ -165,20 +177,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ("Backward", -test_velocity, 0.0, 0.0),
         ("Left", 0.0, test_velocity, 0.0),
         ("Right", 0.0, -test_velocity, 0.0),
-        ("Rotate CCW", 0.0, 0.0, 15.0),  // 15 deg/s - very slow rotation
+        ("Rotate CCW", 0.0, 0.0, 15.0), // 15 deg/s - very slow rotation
         ("Rotate CW", 0.0, 0.0, -15.0),
     ];
 
     for (name, x, y, theta) in tests {
         println!("  Testing: {}...", name);
-        
+
         let wheels = body_to_wheel_raw(x, y, theta);
-        println!("    Wheel commands: left={}, back={}, right={}", 
-                 wheels.left, wheels.back, wheels.right);
-        
+        println!(
+            "    Wheel commands: left={}, back={}, right={}",
+            wheels.left, wheels.back, wheels.right
+        );
+
         send_wheel_velocities(&mut bus, &wheels)?;
         sleep(test_duration);
-        
+
         // Stop between tests
         send_wheel_velocities(&mut bus, &WheelVelocities::zero())?;
         sleep(pause_duration);
@@ -201,17 +215,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn send_wheel_velocities(bus: &mut FeetechBus, vel: &WheelVelocities) -> Result<(), Box<dyn std::error::Error>> {
+fn send_wheel_velocities(
+    bus: &mut FeetechBus,
+    vel: &WheelVelocities,
+) -> Result<(), Box<dyn std::error::Error>> {
     // Use sync_write for efficiency
     use lekiwi_zenoh_runtime::motor::feetech::Register;
-    
+
     // Encode sign-magnitude and send via sync_write
     let data = [
         (MOTOR_IDS[0], vel.left),
         (MOTOR_IDS[1], vel.back),
         (MOTOR_IDS[2], vel.right),
     ];
-    
+
     bus.sync_write_i16(Register::GoalVelocity, &data)?;
     Ok(())
 }
@@ -220,11 +237,11 @@ fn stop_motors(bus: &mut FeetechBus) -> Result<(), Box<dyn std::error::Error>> {
     // Send zero velocity
     let zero = WheelVelocities::zero();
     send_wheel_velocities(bus, &zero)?;
-    
+
     // Disable torque for safety
     for &id in &MOTOR_IDS {
         let _ = bus.disable_torque(id); // Ignore errors on cleanup
     }
-    
+
     Ok(())
 }
