@@ -1,4 +1,5 @@
 // Keyboard teleop: WASD move, Z/X rotate, R/F speed, Q quit
+use clap::Parser;
 use crossterm::{
     event::{self, Event, KeyCode, KeyEvent, KeyEventKind},
     terminal::{disable_raw_mode, enable_raw_mode},
@@ -7,16 +8,44 @@ use serde_json::json;
 use std::time::{Duration, Instant};
 use tracing::info;
 
+#[derive(Parser)]
+#[command(name = "cmd_publisher")]
+struct Args {
+    /// Connect to remote runtime at this IP (enables network mode)
+    #[arg(long)]
+    connect: Option<String>,
+
+    /// TCP port to connect to (default: 7447)  
+    #[arg(long, default_value = "7447")]
+    port: u16,
+}
+
 const SPEEDS: [f64; 3] = [0.05, 0.15, 0.3]; // m/s
 const THETA_SPEEDS: [f64; 3] = [15.0, 45.0, 90.0]; // deg/s
 const INPUT_TIMEOUT_MS: u64 = 300; // Must be longer than OS key repeat delay
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let args = Args::parse();
     tracing_subscriber::fmt().with_env_filter("info").init();
 
+    let config = if let Some(ip) = &args.connect {
+        // Network mode: connect to remote
+        let mut config = zenoh::Config::default();
+        let endpoint = format!("tcp/{}:{}", ip, args.port);
+        config
+            .insert_json5("connect/endpoints", &format!("[\"{}\"]", endpoint))
+            .unwrap();
+        info!("Network mode: connecting to {}", endpoint);
+        config
+    } else {
+        // Local mode: default multicast discovery
+        info!("Local mode: using multicast discovery");
+        zenoh::Config::default()
+    };
+
     info!("Opening Zenoh session...");
-    let session = zenoh::open(zenoh::Config::default()).await?;
+    let session = zenoh::open(config).await?;
     let publisher = session.declare_publisher("lekiwi/cmd/base").await?;
 
     info!("Controls: WASD=move, Z/X=rotate, R/F=speed, Q=quit");

@@ -1,13 +1,28 @@
 // 50 Hz loop with watchdog and motor control
 
+use clap::Parser;
 use std::time::{Duration, Instant};
-use tokio::time::interval; 
-use tracing::{error, info, warn, debug}; // better logging (emits events into the void, not stdout - and a subscriber (tracing-subscriber) can listen to them)
+use tokio::time::interval;
+use tracing::{debug, error, info, warn}; // better logging (emits events into the void, not stdout - and a subscriber (tracing-subscriber) can listen to them)
 
 // local imports
-use crate::config::{CMD_TIMEOUT, LOOP_HZ, MOTOR_ENABLED, MOTOR_PORT, TOPIC_CMD_BASE, TOPIC_HEALTH, TOPIC_RT_BASE};
+use crate::config::{
+    CMD_TIMEOUT, LOOP_HZ, MOTOR_ENABLED, MOTOR_PORT, TOPIC_CMD_BASE, TOPIC_HEALTH, TOPIC_RT_BASE,
+};
 use crate::messages::{BaseActuation, BaseCommand, RuntimeHealth};
 use crate::motor::MotorDriver;
+
+#[derive(Parser)]
+#[command(name = "lekiwi-runtime")]
+pub struct Args {
+    /// Listen on TCP for remote connections (enables network mode)
+    #[arg(long)]
+    pub listen: bool,
+
+    /// TCP port to listen on (default: 7447)
+    #[arg(long, default_value = "7447")]
+    pub port: u16,
+}
 
 pub struct Runtime {
     latest_cmd: Option<BaseCommand>,
@@ -52,7 +67,8 @@ impl Runtime {
     fn compute_actuation(&mut self) -> BaseActuation {
         let cmd_age = self.cmd_received_at.elapsed();
 
-        if cmd_age > CMD_TIMEOUT { // trigger watchdog if command is stale
+        if cmd_age > CMD_TIMEOUT {
+            // trigger watchdog if command is stale
             if self.health != RuntimeHealth::CmdStale {
                 warn!("Command stale ({:?} old), stopping robot", cmd_age);
             }
@@ -71,11 +87,9 @@ impl Runtime {
     /// Send actuation to motors
     fn send_to_motors(&mut self, actuation: &BaseActuation) {
         if let Some(ref mut driver) = self.motor_driver {
-            if let Err(e) = driver.set_body_velocity(
-                actuation.x_vel,
-                actuation.y_vel,
-                actuation.theta_vel,
-            ) {
+            if let Err(e) =
+                driver.set_body_velocity(actuation.x_vel, actuation.y_vel, actuation.theta_vel)
+            {
                 error!("Failed to send motor command: {}", e);
             }
         }
@@ -92,8 +106,25 @@ impl Runtime {
 }
 
 pub async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let args = Args::parse();
+
+    let config = if args.listen {
+        // Network mode: listen on TCP
+        let mut config = zenoh::Config::default();
+        let endpoint = format!("tcp/0.0.0.0:{}", args.port);
+        config
+            .insert_json5("listen/endpoints", &format!("[\"{}\"]", endpoint))
+            .unwrap();
+        info!("Network mode: listening on {}", endpoint);
+        config
+    } else {
+        // Local mode: default multicast discovery
+        info!("Local mode: using multicast discovery");
+        zenoh::Config::default()
+    };
+
     info!("Opening Zenoh session...");
-    let session = zenoh::open(zenoh::Config::default()).await?;
+    let session = zenoh::open(config).await?;
     let subscriber = session.declare_subscriber(TOPIC_CMD_BASE).await?;
     let pub_actuation = session.declare_publisher(TOPIC_RT_BASE).await?;
     let pub_health = session.declare_publisher(TOPIC_HEALTH).await?;
@@ -101,7 +132,10 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut runtime = Runtime::new();
 
     if let Err(e) = runtime.init_motors() {
-        warn!("Failed to initialize motors: {}. Running without motor control.", e);
+        warn!(
+            "Failed to initialize motors: {}. Running without motor control.",
+            e
+        );
     }
 
     let mut tick = interval(Duration::from_millis(1000 / LOOP_HZ));
@@ -113,7 +147,14 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     );
     info!("Subscribed to: {}", TOPIC_CMD_BASE);
     info!("Publishing to: {}, {}", TOPIC_RT_BASE, TOPIC_HEALTH);
-    info!("Motor control: {}", if runtime.motor_driver.is_some() { "ENABLED" } else { "DISABLED" });
+    info!(
+        "Motor control: {}",
+        if runtime.motor_driver.is_some() {
+            "ENABLED"
+        } else {
+            "DISABLED"
+        }
+    );
 
     // Setup graceful shutdown
     let shutdown = tokio::signal::ctrl_c();
