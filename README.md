@@ -21,6 +21,30 @@ Rust-based runtime for controlling the LeKiwi omniwheel mobile robot base via Ze
 - **Motor Driver** (`src/motor/`): Feetech STS3215 serial protocol and kinematics
 - **Keyboard Teleop** (`examples/cmd_publisher.rs`): WASD keyboard control
 
+## Deployment Modes
+
+This runtime supports two deployment modes:
+
+### Local Mode (Single Machine)
+Run both runtime and keyboard control on the same machine. Uses Zenoh multicast discovery - no configuration needed.
+
+### Network Mode (Distributed)
+Run the runtime on a Raspberry Pi (connected to motors) and control from a separate computer over WiFi.
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                         WiFi Network                                 │
+│                                                                      │
+│   ┌─────────────────────────┐      TCP/7447      ┌────────────────┐ │
+│   │   Raspberry Pi (Host)   │◀─────────────────▶│  Your Computer │ │
+│   │   runtime --listen      │                    │  cmd_publisher │ │
+│   │   + Motors (USB serial) │                    │  --connect IP  │ │
+│   └─────────────────────────┘                    └────────────────┘ │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
 ## Quick Start
 
 ### 1. Hardware Setup
@@ -72,6 +96,92 @@ Controls:
 - **Z/X** - Rotate counter-clockwise/clockwise
 - **R/F** - Increase/decrease speed
 - **Q** - Quit
+
+---
+
+## Network Mode (Raspberry Pi + Computer)
+
+For distributed deployment over WiFi (e.g., hotspot from your phone or computer):
+
+### 1. On the Raspberry Pi (Host)
+
+First, find the Pi's IP address:
+
+```bash
+hostname -I
+# Example output: 192.168.43.42
+```
+
+Update the serial port in `src/config.rs` if needed (typically `/dev/ttyUSB0` or `/dev/ttyACM0` on Linux).
+
+Start the runtime in listen mode:
+
+```bash
+RUST_LOG=info cargo run -- --listen
+# Or with custom port:
+RUST_LOG=info cargo run -- --listen --port 7447
+```
+
+The runtime will print:
+```
+Network mode: listening on tcp/0.0.0.0:7447
+```
+
+### 2. On Your Computer (Client)
+
+Connect to the same WiFi network as the Raspberry Pi.
+
+Run the keyboard teleop with the Pi's IP address:
+
+```bash
+RUST_LOG=info cargo run --example cmd_publisher -- --connect 192.168.43.42
+# Or with custom port:
+RUST_LOG=info cargo run --example cmd_publisher -- --connect 192.168.43.42 --port 7447
+```
+
+The client will print:
+```
+Network mode: connecting to tcp/192.168.43.42:7447
+```
+
+### Cross-Compiling for Raspberry Pi
+
+For Raspberry Pi 4/5 (64-bit):
+
+```bash
+# Add target
+rustup target add aarch64-unknown-linux-gnu
+
+# Install linker (macOS with Homebrew)
+brew install messense/macos-cross-toolchains/aarch64-unknown-linux-gnu
+
+# Build
+CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-unknown-linux-gnu-gcc \
+cargo build --release --target aarch64-unknown-linux-gnu
+
+# Copy binary to Pi
+scp target/aarch64-unknown-linux-gnu/release/lekiwi-zenoh-runtime pi@192.168.43.42:~
+```
+
+For Raspberry Pi 3 or older (32-bit):
+
+```bash
+rustup target add armv7-unknown-linux-gnueabihf
+```
+
+### Firewall Notes
+
+Ensure port 7447 (TCP) is open on the Raspberry Pi:
+
+```bash
+# Check if firewall is active
+sudo ufw status
+
+# Allow port if needed
+sudo ufw allow 7447/tcp
+```
+
+---
 
 ## Configuration
 
@@ -125,6 +235,20 @@ sudo chmod 666 /dev/ttyACM0
 ### Robot moves in wrong direction
 
 The kinematics assume a specific wheel layout. If directions are inverted, you may need to adjust the motor wiring or modify `src/motor/kinematics.rs`.
+
+### Network mode: client can't connect
+
+1. Verify both devices are on the same WiFi network
+2. Check the Pi's IP address: `hostname -I`
+3. Test connectivity: `ping 192.168.x.x`
+4. Ensure port 7447 is open: `sudo ufw allow 7447/tcp`
+5. Check the runtime is running with `--listen` flag
+
+### Network mode: connection drops or high latency
+
+1. Use a stable WiFi connection (5GHz preferred over 2.4GHz)
+2. Move closer to the access point
+3. If using a phone hotspot, ensure it's not going to sleep
 
 ## Development
 
