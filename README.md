@@ -47,6 +47,14 @@ Run the runtime on a Raspberry Pi (connected to motors) and control from a separ
 
 ## Quick Start
 
+### Prerequisites (Linux/Raspberry Pi)
+
+On Linux systems, you need the `libudev` development libraries for serial port enumeration:
+
+```bash
+sudo apt update && sudo apt install libudev-dev pkg-config
+```
+
 ### 1. Hardware Setup
 
 Connect the Feetech motor controller to your computer via USB. Find the serial port:
