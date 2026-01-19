@@ -9,7 +9,7 @@ use tracing::info;
 
 const SPEEDS: [f64; 3] = [0.05, 0.15, 0.3]; // m/s
 const THETA_SPEEDS: [f64; 3] = [15.0, 45.0, 90.0]; // deg/s
-const INPUT_TIMEOUT_MS: u64 = 100; // Reset velocities after this much time with no input
+const INPUT_TIMEOUT_MS: u64 = 300; // Must be longer than OS key repeat delay
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
